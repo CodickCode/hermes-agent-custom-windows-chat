@@ -57,8 +57,10 @@
             <StackPanel Grid.Row="0">
                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
-                            Click="OnStop" Visibility="Collapsed" MinWidth="110"/>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
+                                Click="OnStop" Visibility="Collapsed" MinWidth="110" Margin="8,0,0,0"/>
+                    </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,10,0">
                         <TextBlock Text="Модель" VerticalAlignment="Center" FontSize="12"
                                    Foreground="{StaticResource Dim}" Margin="0,0,6,0"/>
@@ -72,9 +74,16 @@
                 </DockPanel>
                                 </Border>
                                 <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,6">
-                                    <TextBlock x:Name="StatsText" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
-                                </Border>
-                            </StackPanel>
+                                                                    <TextBlock x:Name="StatsText" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
+                                                                </Border>
+                                                                <Border x:Name="SteerBar" Background="#2A2418" BorderBrush="{StaticResource Warn}" BorderThickness="0,0,0,1" Padding="12,6" Visibility="Collapsed">
+                                                                    <DockPanel>
+                                                                        <Button DockPanel.Dock="Right" Content="Отправить подсказку" Style="{StaticResource Btn}" Click="OnSteerSend" Margin="8,0,0,0"/>
+                                                                        <TextBlock DockPanel.Dock="Left" Text="Подсказать агенту на лету:" FontSize="12" Foreground="{StaticResource Warn}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                                        <TextBox x:Name="SteerInput" BorderThickness="0" Background="Transparent" Padding="0" VerticalAlignment="Center"/>
+                                                                    </DockPanel>
+                                                                </Border>
+                                                            </StackPanel>
 
                             <ScrollViewer x:Name="FeedScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
                 <StackPanel x:Name="Feed" Margin="0,8"/>

@@ -41,6 +41,14 @@ public sealed class RunEvent
     public long DurationMs => UpdatedAt > CreatedAt ? (long)((UpdatedAt - CreatedAt) * 1000) : 0;
     public string Status { get; set; } = "";
     public string Message { get; set; } = "";
+    // ---- Одобрение инструмента ----
+    public string RequestId { get; set; } = "";
+    public string Command { get; set; } = "";
+    public string ToolName { get; set; } = "";
+    public List<string> Choices { get; set; } = new();
+    public bool SmartDenied { get; set; }
+    public string Reason { get; set; } = "";
+    public string Choice { get; set; } = "";
 }
 
 /// <summary>Клиент api_server Hermes: создание run, SSE событий, остановка, опрос статуса.</summary>
@@ -196,6 +204,39 @@ public sealed class HermesClient(ChatSettings settings)
         var body = await response.Content.ReadAsStringAsync(cancel);
         if (!response.IsSuccessStatusCode) throw new HermesException(Explain(response.StatusCode, body), (int)response.StatusCode);
         return JsonSerializer.Deserialize<RunEvent>(body, JsonOpts) ?? new RunEvent();
+    }
+
+    /// <summary>Ответ на запрос одобрения. choice: once | session | always | deny.
+    /// Без этого run остаётся в waiting_for_approval навсегда.</summary>
+    public async Task ApproveAsync(string runId, string choice, string? requestId)
+    {
+        using var http = NewClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{Config.NormalizedBase}/v1/runs/{runId}/approval")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { choice, request_id = requestId }, JsonOpts), Encoding.UTF8, "application/json")
+        };
+        Authorize(request);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var response = await http.SendAsync(request, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cts.Token);
+        if (!response.IsSuccessStatusCode) throw new HermesException(Explain(response.StatusCode, body), (int)response.StatusCode);
+    }
+
+    /// <summary>Подсказка в уже идущий запуск — как в консоли, где можно вмешаться на лету.</summary>
+    public async Task SteerAsync(string runId, string input)
+    {
+        using var http = NewClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{Config.NormalizedBase}/v1/runs/{runId}/steer")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { input }, JsonOpts), Encoding.UTF8, "application/json")
+        };
+        Authorize(request);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var response = await http.SendAsync(request, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cts.Token);
+        if (!response.IsSuccessStatusCode) throw new HermesException(Explain(response.StatusCode, body), (int)response.StatusCode);
     }
 
     public async Task StopAsync(string runId)

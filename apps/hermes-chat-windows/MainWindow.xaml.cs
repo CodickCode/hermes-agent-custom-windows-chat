@@ -195,6 +195,20 @@ public partial class MainWindow : Window
             panel.Children.Add(strip);
         }
 
+        if (message.WaitingApproval)
+            panel.Children.Add(BuildApprovalBlock(message));
+
+        if (message.Steers.Count > 0)
+            foreach (var steer in message.Steers)
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "твоя подсказка: " + steer,
+                    FontSize = 11,
+                    Foreground = Find("Accent"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(2, 4, 0, 0)
+                });
+
         if (message.Tools.Count > 0)
         {
             panel.Children.Add(new TextBlock
@@ -232,10 +246,118 @@ public partial class MainWindow : Window
     /// <summary>Живая строка состояния: видно, что агент делает, а не только «пишет».</summary>
     private static string StatusLine(ChatMessage message)
     {
-        if (message.Tools.LastOrDefault() is { Running: true } step)
-            return "работает: " + step.Tool;
+        if (message.WaitingApproval) return "ждёт твоего решения";
+        if (message.Tools.LastOrDefault() is { Running: true } step) return "работает: " + step.Tool;
         if (message.Streaming.Length > 0) return "пишет…";
         return "думает…";
+    }
+
+    /// <summary>Блок одобрения: без него запуск висит в waiting_for_approval молча.</summary>
+    private FrameworkElement BuildApprovalBlock(ChatMessage message)
+    {
+        var box = new StackPanel();
+        box.Children.Add(new TextBlock
+        {
+            Text = "Агент просит разрешить: " + message.ApprovalTool,
+            FontSize = 12,
+            Foreground = Find("Warn"),
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+        if (message.ApprovalCommand.Length > 0)
+            box.Children.Add(new Border
+            {
+                Background = Find("Bg"),
+                BorderBrush = Find("Warn"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 6, 8, 6),
+                Margin = new Thickness(0, 0, 0, 8),
+                Child = new TextBlock
+                {
+                    Text = message.ApprovalCommand,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 12,
+                    Foreground = Find("Fg"),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+
+        var row = new WrapPanel();
+        foreach (var choice in message.ApprovalChoices)
+        {
+            var label = choice switch
+            {
+                "once" => "Разрешить",
+                "session" => "Разрешить до конца сессии",
+                "always" => "Разрешить всегда",
+                "deny" => "Запретить",
+                _ => choice
+            };
+            var button = new Button
+            {
+                Content = label,
+                Style = (Style)FindResource(choice == "deny" ? "Btn" : "PrimaryBtn"),
+                Margin = new Thickness(0, 0, 8, 0),
+                Tag = message.Id + "|" + choice
+            };
+            button.Click += OnApproveClick;
+            row.Children.Add(button);
+        }
+        box.Children.Add(row);
+        return new Border
+        {
+            Background = Find("Panel"),
+            BorderBrush = Find("Warn"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10, 12, 10),
+            Margin = new Thickness(0, 6, 0, 0),
+            Child = box
+        };
+    }
+
+    private async void OnApproveClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+        var parts = tag.Split('|');
+        var message = _thread?.Messages.FirstOrDefault(m => m.Id == parts[0]);
+        if (message is null || _client is null || message.RunId.Length == 0) return;
+        var choice = parts[1];
+        try
+        {
+            await _client.ApproveAsync(message.RunId, choice,
+                message.ApprovalRequestId.Length > 0 ? message.ApprovalRequestId : null);
+            message.WaitingApproval = false;
+            message.Note = "Ответ отправлен: " + choice;
+            Render();
+        }
+        catch (Exception error)
+        {
+            CrashLog.Write("Одобрение: " + error);
+            MessageBox.Show("Не удалось ответить: " + error.Message, "HermesChat",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Подсказка в идущий запуск. Пустое поле означает обычную отправку.</summary>
+    private async void OnSteerSend(object sender, RoutedEventArgs e)
+    {
+        var text = SteerInput.Text.Trim();
+        if (text.Length == 0 || _live is null || _client is null || _live.RunId.Length == 0) return;
+        try
+        {
+            await _client.SteerAsync(_live.RunId, text);
+            _live.Steers.Add(text);
+            SteerInput.Clear();
+            _live.Note = "Подсказка отправлена агенту";
+            Render();
+        }
+        catch (Exception error)
+        {
+            CrashLog.Write("Steer: " + error);
+            MessageBox.Show("Подсказку не приняли: " + error.Message, "HermesChat",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private FrameworkElement BuildToolRow(ToolStep step)
@@ -466,6 +588,23 @@ public partial class MainWindow : Window
             case "message.interim" when _store.Settings.ShowReasoning && !item.AlreadyStreamed:
                 _live.Streaming += "\n" + item.Text;
                 break;
+            case "approval.request":
+                // Запуск стоит и ждёт решения. Без явного блока с кнопками он молчал бы
+                // вечно, и пользователь не понимал бы, почему «агент завис».
+                _live.WaitingApproval = true;
+                _live.ApprovalCommand = item.Command.Length > 0 ? item.Command : item.Preview;
+                _live.ApprovalTool = item.ToolName.Length > 0 ? item.ToolName : item.Tool;
+                _live.ApprovalRequestId = item.RequestId;
+                _live.ApprovalChoices = item.Choices.Count > 0
+                    ? new List<string>(item.Choices)
+                    : new List<string> { "once", "deny" };
+                _live.Note = "Нужно твоё решение: " + Trim(_live.ApprovalCommand, 160);
+                break;
+            case "approval.resolved":
+            case "approval.decided":
+                _live.WaitingApproval = false;
+                _live.Note = "Решение принято: " + Trim(item.Choice.Length > 0 ? item.Choice : "подтверждено", 80);
+                break;
             case "reasoning.available" when _store.Settings.ShowReasoning:
                 _live.Note = "Размышление: " + Trim(item.Text, 140);
                 break;
@@ -585,7 +724,13 @@ public partial class MainWindow : Window
         SendBtn.IsEnabled = !busy;
         SendBtn.Content = busy ? "Агент работает" : "Отправить";
         StopBtn.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        if (busy) StopBtn.IsEnabled = true;
+        SteerBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        if (busy)
+        {
+            StopBtn.IsEnabled = true;
+            if (!SteerInput.IsFocused) SteerInput.Focus();
+        }
+        else SteerInput.Clear();
     }
 
     private static string Trim(string value, int size) =>
@@ -638,6 +783,7 @@ public partial class MainWindow : Window
 
     private void ApplyModel(string id)
     {
+        if (_thread is null) return;
         var index = IndexOfModel(id);
         if (index < 0)
         {

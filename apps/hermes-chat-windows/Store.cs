@@ -86,6 +86,11 @@ public sealed class Store
                 message.RouteSource = message.RouteSource ?? "";
                 message.Attachments ??= new List<Attachment>();
                 message.Tools ??= new List<ToolStep>();
+                message.ApprovalChoices ??= new List<string>();
+                message.Steers ??= new List<string>();
+                message.ApprovalCommand = message.ApprovalCommand ?? "";
+                message.ApprovalTool = message.ApprovalTool ?? "";
+                message.ApprovalRequestId = message.ApprovalRequestId ?? "";
                 foreach (var file in message.Attachments) { file.Name ??= "file"; file.Path = file.Path ?? ""; }
                 foreach (var step in message.Tools) { step.Tool ??= "tool"; step.Preview = step.Preview ?? ""; step.Result = step.Result ?? ""; }
             }

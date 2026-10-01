@@ -28,6 +28,14 @@ public sealed class ChatMessage
     /// <summary>Длительность запуска в миллисекундах — по created_at и updated_at шлюза.</summary>
     public long DurationMs { get; set; }
     public int ToolCount { get; set; }
+    /// <summary>Ожидает решения человека. Пока стоит, запуску нужен ответ — иначе он висит вечно.</summary>
+    public bool WaitingApproval { get; set; }
+    public string ApprovalCommand { get; set; } = "";
+    public string ApprovalTool { get; set; } = "";
+    public string ApprovalRequestId { get; set; } = "";
+    public List<string> ApprovalChoices { get; set; } = new();
+    /// <summary>Подсказки, отправленные в идущий запуск — видно, что ты вмешивался.</summary>
+    public List<string> Steers { get; set; } = new();
     /// <summary>Контекст = входные токены последнего запуска: это то, что реально ушло модели.</summary>
     public int ContextTokens => InputTokens;
     public List<Attachment> Attachments { get; set; } = new();
