@@ -20,6 +20,8 @@ public sealed class Store
     public List<Profile> Profiles { get; set; } = new();
     /// <summary>Снимок дерева: откуда профили берут очередь TODO.</summary>
     public string TreeSnapshot { get; set; } = "";
+    /// <summary>Внешние шлюзы — агенты на других машинах.</summary>
+    public List<Gateway> Gateways { get; set; } = new();
 
     public Store()
     {
@@ -38,6 +40,7 @@ public sealed class Store
             Threads = doc.Threads ?? new List<ChatThread>();
             Profiles = doc.Profiles ?? new List<Profile>();
             TreeSnapshot = doc.TreeSnapshot ?? "";
+            Gateways = doc.Gateways ?? new List<Gateway>();
             foreach (var thread in Threads)
             {
                 // Незавершённый агент после перезапуска не «продолжает молча» — он помечен и виден.
@@ -50,6 +53,15 @@ public sealed class Store
             }
             Normalize();
             if (Profiles.Count == 0) Profiles = ProfileDefaults.Seed();
+            if (Gateways.Count == 0)
+                Gateways.Add(new Gateway
+                {
+                    Name = "Этот ноут (локально)",
+                    Url = Settings.NormalizedBase,
+                    Token = Settings.ApiKey,
+                    Kind = "hermes",
+                    Note = "Локальный шлюз Hermes. Образец заполнения для внешних."
+                });
             if (Threads.Count == 0) EnsureSeed();
         }
         catch (Exception)
@@ -59,6 +71,7 @@ public sealed class Store
             Settings = new ChatSettings();
             Threads = new List<ChatThread>();
             Profiles = ProfileDefaults.Seed();
+            Gateways = new List<Gateway>();
             EnsureSeed();
         }
     }

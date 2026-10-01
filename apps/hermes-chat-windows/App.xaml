@@ -6,6 +6,7 @@
     <Application.Resources>
         <SolidColorBrush x:Key="Bg" Color="#14161A"/>
         <SolidColorBrush x:Key="Panel" Color="#1B1E24"/>
+        <SolidColorBrush x:Key="PanelHi" Color="#2E3542"/>
         <SolidColorBrush x:Key="Line" Color="#2A2F38"/>
         <SolidColorBrush x:Key="Fg" Color="#E6E8EC"/>
         <SolidColorBrush x:Key="Dim" Color="#8A93A0"/>
@@ -106,6 +107,13 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="TabBtn" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style TargetType="TextBox">

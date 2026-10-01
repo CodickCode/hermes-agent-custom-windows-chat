@@ -1,151 +1,32 @@
 <Window x:Class="HermesChat.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HermesChat"
         Title="HermesChat — Виндовс-чат под Hermes агента"
-        Height="820" Width="1180" MinHeight="560" MinWidth="900"
+        Height="840" Width="1280" MinHeight="600" MinWidth="1000"
         Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen">
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-        <!-- Левая колонка: диалоги и статус шлюза -->
-        <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
-            <Grid Margin="12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Text="Диалоги" FontSize="12" Foreground="{StaticResource Dim}" Margin="0,4,0,8"/>
-
-                <ListBox x:Name="ThreadList" Grid.Row="1" Height="120" Background="Transparent" BorderThickness="0"
-                         Foreground="{StaticResource Fg}" DisplayMemberPath="Title"
-                         SelectionChanged="OnThreadSelected"/>
-
-                <StackPanel Grid.Row="2" Margin="0,8,0,0">
-                    <TextBlock Text="СОСТОЯНИЕ ШЛЮЗА" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,0,0,6"/>
-                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="6" Padding="10">
-                        <StackPanel>
-                            <TextBlock x:Name="StatusText" Text="Не проверен" FontSize="13" TextWrapping="Wrap"/>
-                            <TextBlock x:Name="StatusNote" Text="Нажми «Проверить»." FontSize="11"
-                                       Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <Button x:Name="ProbeBtn" Grid.Row="3" Content="Проверить шлюз" Style="{StaticResource Btn}"
-                            Margin="0,10,0,0" Click="OnProbe" HorizontalAlignment="Stretch"/>
-                </StackPanel>
-
-                <StackPanel Grid.Row="3" Margin="0,12,0,4">
-                    <Button Content="Новый диалог" Style="{StaticResource Btn}" Click="OnNewThread" HorizontalAlignment="Stretch"/>
-                    <Button Content="Настройки" Style="{StaticResource Btn}" Click="OnSettings" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
-                </StackPanel>
-            </Grid>
+        <!-- Разделы -->
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="14,8">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="TabChats" Content="Чаты" Tag="chats" Style="{StaticResource TabBtn}"
+                        Click="OnTabClick" HorizontalAlignment="Left"/>
+                <Button x:Name="TabProfiles" Content="Профили оркестраторов" Tag="profiles" Style="{StaticResource TabBtn}"
+                        Click="OnTabClick" HorizontalAlignment="Left"/>
+                <Button x:Name="TabGateways" Content="Внешние шлюзы" Tag="gateways" Style="{StaticResource TabBtn}"
+                        Click="OnTabClick" HorizontalAlignment="Left"/>
+            </StackPanel>
         </Border>
 
-        <!-- Правая колонка: лента и ввод -->
-        <Grid Grid.Column="1">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <StackPanel Grid.Row="0">
-                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
-                                Click="OnStop" Visibility="Collapsed" MinWidth="110" Margin="8,0,0,0"/>
-                    </StackPanel>
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,14,0">
-                        <Button x:Name="ProfilesBtn" Content="Профили" Style="{StaticResource Btn}"
-                                Click="OnProfiles" Margin="0,0,10,0" Padding="9,5"
-                                ToolTip="Профильные агенты по направлениям"/>
-                        <TextBlock Text="Модель" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource Dim}" Margin="0,0,6,0"/>
-                        <ComboBox x:Name="ModelBox" Width="250" IsEditable="True" StaysOpenOnEdit="True"
-                                  ItemTemplate="{StaticResource ModelItemTemplate}"
-                                  SelectionChanged="OnModelChanged" LostFocus="OnModelTyped"
-                                  ToolTip="Модель этого диалога. Свой идентификатор можно вписать руками."/>
-                        <Button x:Name="ModelSaveBtn" Content="ОК" Style="{StaticResource Btn}" Margin="6,0,0,0"
-                                Click="OnModelTyped" ToolTip="Применить вписанную модель" Padding="8,3"/>
-                    </StackPanel>
-                    <ComboBox x:Name="ProfileBox" DockPanel.Dock="Right" Width="250" Margin="0,0,8,0"
-                              SelectionChanged="OnProfileChanged"
-                              ToolTip="Агент этого диалога. Пусто — универсальный."/>
-                    <TextBlock x:Name="HeaderText" Text="Диалог" FontSize="13" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" Margin="10,0,0,0"/>
-                </DockPanel>
-                                </Border>
-                                <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,6">
-                                                                    <TextBlock x:Name="StatsText" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
-                                                                </Border>
-                                                                <Border x:Name="SteerBar" Background="#2A2418" BorderBrush="{StaticResource Warn}" BorderThickness="0,0,0,1" Padding="12,6" Visibility="Collapsed">
-                                                                    <DockPanel>
-                                                                        <Button DockPanel.Dock="Right" Content="Отправить подсказку" Style="{StaticResource Btn}" Click="OnSteerSend" Margin="8,0,0,0"/>
-                                                                        <TextBlock DockPanel.Dock="Left" Text="Подсказать агенту на лету:" FontSize="12" Foreground="{StaticResource Warn}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                                        <TextBox x:Name="SteerInput" BorderThickness="0" Background="Transparent" Padding="0" VerticalAlignment="Center"/>
-                                                                    </DockPanel>
-                                                                </Border>
-                                                            </StackPanel>
-
-                            <ScrollViewer x:Name="FeedScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
-                <StackPanel x:Name="Feed" Margin="0,8"/>
-            </ScrollViewer>
-
-            <Border x:Name="DropHint" Grid.Row="1" Background="#1E2A38" BorderBrush="{StaticResource Accent}"
-                    BorderThickness="2" CornerRadius="8" Padding="16" Margin="16,8,16,0" Visibility="Collapsed">
-                <TextBlock Text="Отпусти файл — он прикрепится к сообщению" HorizontalAlignment="Center" Foreground="{StaticResource Accent}"/>
-            </Border>
-            <Border Grid.Row="2" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,12">
-                <Grid AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop" Background="Transparent">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <ItemsControl x:Name="AttachBar" Grid.Row="0" Margin="0,0,0,10" Visibility="Collapsed">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                        CornerRadius="6" Padding="8,4" Margin="0,0,8,8">
-                                    <DockPanel>
-                                        <Button DockPanel.Dock="Right" Content="×" Width="20" Margin="6,0,0,0"
-                                                Style="{StaticResource Btn}" Padding="0" Tag="{Binding}"
-                                                Click="OnRemoveAttachment"/>
-                                        <TextBlock Text="{Binding Name}" MaxWidth="220" TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center" ToolTip="{Binding Path}"/>
-                                        <TextBlock Text="{Binding SizeText}" FontSize="11" Foreground="{StaticResource Dim}"
-                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                    </DockPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <TextBox x:Name="Input" Grid.Row="0" AcceptsReturn="True" TextWrapping="Wrap"
-                             MinHeight="72" MaxHeight="220" VerticalScrollBarVisibility="Auto"
-                             KeyDown="OnInputKey"/>
-                    <DockPanel Grid.Row="2" Margin="0,10,0,0">
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                            <Button Content="Скриншот" Style="{StaticResource Btn}" Click="OnPasteImage" ToolTip="Ctrl+V — вставить скриншот из буфера"/>
-                            <Button Content="Файл…" Style="{StaticResource Btn}" Click="OnPickFile" Margin="8,0,0,0"/>
-                            <Button x:Name="SkillsBtn" Content="Навыки" Style="{StaticResource Btn}" Click="OnSkills" Margin="8,0,0,0"/>
-                        </StackPanel>
-                        <TextBlock x:Name="Hint" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                   Text="Enter — отправить. Shift+Enter — строка. Ctrl+V — скриншот."
-                                   FontSize="11" Foreground="{StaticResource Dim}" Margin="10,0,0,0"/>
-                        <Button x:Name="SendBtn" Content="Отправить" Style="{StaticResource PrimaryBtn}"
-                                Click="OnSend" HorizontalAlignment="Right" MinWidth="130"/>
-                    </DockPanel>
-                </Grid>
-            </Border>
+        <Grid Grid.Row="1">
+            <local:ChatsTab x:Name="Chats" Visibility="Visible"/>
+            <local:ProfilesTab x:Name="Profiles" Visibility="Collapsed"/>
+            <local:GatewaysTab x:Name="Gateways" Visibility="Collapsed"/>
         </Grid>
     </Grid>
 </Window>
