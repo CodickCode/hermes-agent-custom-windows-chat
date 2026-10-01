@@ -74,9 +74,12 @@
                                     </ControlTemplate>
                                 </ToggleButton.Template>
                             </ToggleButton>
-                            <ContentPresenter Margin="8,3,26,3" VerticalAlignment="Center" IsHitTestVisible="False"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                            <!-- IsEditable ComboBox требует PART_EditableTextBox: без него поле ввода
+                                 не появляется вовсе и выглядит как пустой серый прямоугольник. -->
+                            <TextBox x:Name="PART_EditableTextBox" Margin="8,3,26,3" VerticalAlignment="Center"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     Foreground="{StaticResource Fg}" CaretBrush="{StaticResource Accent}"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}"/>
                             <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource Dim}" HorizontalAlignment="Right"
                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
                             <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" PopupAnimation="Fade" AllowsTransparency="True">

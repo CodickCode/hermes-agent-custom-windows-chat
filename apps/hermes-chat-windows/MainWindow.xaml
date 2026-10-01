@@ -54,21 +54,29 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
+            <StackPanel Grid.Row="0">
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
                             Click="OnStop" Visibility="Collapsed" MinWidth="110"/>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,10,0">
                         <TextBlock Text="Модель" VerticalAlignment="Center" FontSize="12"
                                    Foreground="{StaticResource Dim}" Margin="0,0,6,0"/>
-                        <ComboBox x:Name="ModelBox" Width="290" SelectionChanged="OnModelChanged"
-                                  ToolTip="Модель этого диалога. Свой маршрут шлюза тоже можно вписать."/>
+                        <ComboBox x:Name="ModelBox" Width="260" IsEditable="True" StaysOpenOnEdit="True"
+                                  SelectionChanged="OnModelChanged" LostFocus="OnModelTyped"
+                                  ToolTip="Модель этого диалога. Свой идентификатор можно вписать руками."/>
+                        <Button x:Name="ModelSaveBtn" Content="ОК" Style="{StaticResource Btn}" Margin="6,0,0,0"
+                                Click="OnModelTyped" ToolTip="Применить вписанную модель" Padding="8,3"/>
                     </StackPanel>
                     <TextBlock x:Name="HeaderText" Text="Диалог" FontSize="15" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
-            </Border>
+                                </Border>
+                                <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,6">
+                                    <TextBlock x:Name="StatsText" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
+                                </Border>
+                            </StackPanel>
 
-            <ScrollViewer x:Name="FeedScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
+                            <ScrollViewer x:Name="FeedScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
                 <StackPanel x:Name="Feed" Margin="0,8"/>
             </ScrollViewer>
 

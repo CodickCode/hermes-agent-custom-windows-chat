@@ -1,32 +1,37 @@
 namespace HermesChat;
 
-/// <summary>Модель, доступная в диалоге. Шлюз принимает и произвольные id — их можно вписать вручную.</summary>
+/// <summary>Записи в списке моделей. Id уходит в /v1/runs как model.</summary>
 public sealed class ModelChoice
 {
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
+    public string Note { get; set; } = "";
+    public bool IsCustom => Id.Length > 0 && !ModelCatalog.Known(Id);
+    public override string ToString() => Label.Length > 0 ? Label : Id;
 }
 
 public static class ModelCatalog
 {
-    /// <summary>Проверено живьём: /v1/models отдаёт только hermes-agent, но произвольный
-    /// model в /v1/runs проходит и маршрутизируется как raw_request. Поэтому список
-    /// предложений живёт здесь, а не берётся у шлюза.</summary>
+    /// <summary>/v1/models отдаёт только hermes-agent, но произвольный model в /v1/runs
+    /// принимается и маршрутизируется как raw_request (проверено на anthropic/claude-sonnet-4).
+    /// Поэтому список предложений наш, а шлюз остаётся источником истины по факту ответа:
+    /// реально ответившая модель приходит в runtime.model и показывается рядом.</summary>
     public static readonly ModelChoice[] Defaults =
     {
-        new() { Id = "hermes-agent",                Label = "Hermes — текущая модель шлюза" },
-        new() { Id = "stealth/space-bunny-alpha",   Label = "Space Bunny Alpha — быстро" },
-        new() { Id = "anthropic/claude-sonnet-4",    Label = "Claude Sonnet 4 — сильное рассуждение" },
-        new() { Id = "openai/gpt-4.1",               Label = "GPT-4.1" },
-        new() { Id = "google/gemini-2.5-pro",        Label = "Gemini 2.5 Pro" },
-        new() { Id = "deepseek/deepseek-v4-flash",   Label = "DeepSeek V4 Flash — дёшево" }
+        new() { Id = "hermes-agent",              Label = "Hermes (как настроен в шлюзе)" },
+        new() { Id = "stealth/space-bunny-alpha", Label = "Space Bunny Alpha — быстро, дёшево" },
+        new() { Id = "anthropic/claude-sonnet-4",  Label = "Claude Sonnet 4 — сильное рассуждение" },
+        new() { Id = "openai/gpt-4.1",             Label = "GPT-4.1" },
+        new() { Id = "google/gemini-2.5-pro",      Label = "Gemini 2.5 Pro" },
+        new() { Id = "deepseek/deepseek-v4-flash", Label = "DeepSeek V4 Flash" }
     };
 
     public static bool Known(string id) => Defaults.Any(m => m.Id == id);
+
+    /// <summary>Заголовок списка — чтобы строка «свой маршрут» не выглядела как модель.</summary>
+    public const string CustomLabel = "Свой маршрут шлюза…";
 }
 
-/// <summary>Навык агента, прочитанный с диска. Эндпоинт /v1/skills у шлюза падает 500,
-/// поэтому список берём из каталога Hermes — он и есть источник истины для агента.</summary>
 public sealed class SkillInfo
 {
     public string Name { get; set; } = "";

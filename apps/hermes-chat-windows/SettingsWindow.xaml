@@ -1,7 +1,7 @@
 <Window x:Class="HermesChat.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Настройки" Height="520" Width="620"
+        Title="Настройки" Height="640" Width="680"
         Background="{StaticResource Bg}" WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
     <Grid Margin="20">
         <Grid.RowDefinitions>
@@ -48,8 +48,14 @@
 
         <Border Grid.Row="5" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1"
                 CornerRadius="6" Padding="12">
-            <TextBlock x:Name="ProbeNote" Text="Нажми «Сохранить и проверить» — приложение реально опросит шлюз."
-                       FontSize="12" Foreground="{StaticResource Dim}" TextWrapping="Wrap"/>
+            <StackPanel>
+                <TextBlock x:Name="ProbeNote" Text="Нажми «Сохранить и проверить» — приложение реально опросит шлюз."
+                           FontSize="12" Foreground="{StaticResource Dim}" TextWrapping="Wrap"/>
+                <TextBlock x:Name="EnvNote" FontSize="12" Foreground="{StaticResource Dim}"
+                           TextWrapping="Wrap" Margin="0,10,0,0"/>
+                <TextBlock x:Name="ToolsNote" FontSize="11" Foreground="{StaticResource Dim}"
+                           TextWrapping="Wrap" Margin="0,6,0,0" MaxHeight="90" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
         </Border>
 
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

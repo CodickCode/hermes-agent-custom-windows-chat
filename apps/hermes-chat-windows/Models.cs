@@ -16,9 +16,20 @@ public sealed class ChatMessage
     public string Status { get; set; } = "";        // ok | running | failed | stopped | partial
     public string Note { get; set; } = "";          // причина обрыва/ошибки
     public long CreatedAt { get; set; } = DateTimeOffset.Now.ToUnixTimeSeconds();
+    // ---- Учёт. Заполняется из run.completed / GET /v1/runs: usage + runtime. ----
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
+    public int CacheReadTokens { get; set; }
+    public int CacheWriteTokens { get; set; }
+    /// <summary>Модель, которая реально ответила (runtime.model), а не та, что запрошена.</summary>
     public string Model { get; set; } = "";
+    public string Provider { get; set; } = "";
+    public string RouteSource { get; set; } = "";
+    /// <summary>Длительность запуска в миллисекундах — по created_at и updated_at шлюза.</summary>
+    public long DurationMs { get; set; }
+    public int ToolCount { get; set; }
+    /// <summary>Контекст = входные токены последнего запуска: это то, что реально ушло модели.</summary>
+    public int ContextTokens => InputTokens;
     public List<Attachment> Attachments { get; set; } = new();
     /// <summary>Хронология вызовов инструментов — как в ТГ, а не одна строка «последний инструмент».</summary>
     public List<ToolStep> Tools { get; set; } = new();

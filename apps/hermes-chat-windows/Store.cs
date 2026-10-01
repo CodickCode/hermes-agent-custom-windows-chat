@@ -42,6 +42,7 @@ public sealed class Store
                 }
                 thread.PendingAgentMessages = thread.Messages.Count(m => m.Status is "running");
             }
+            Normalize();
             if (Threads.Count == 0) EnsureSeed();
         }
         catch (Exception)
@@ -53,6 +54,45 @@ public sealed class Store
             EnsureSeed();
         }
     }
+
+    /// <summary>Старые state.json не знают новых полей и пишут в них null.
+    /// Без этого _thread.Model.Length роняет окно при выборе диалога —
+    /// и падение выглядит как «модели кривые».</summary>
+    private void Normalize()
+    {
+        Settings.BaseUrl ??= "http://127.0.0.1:8642";
+        Settings.ApiKey ??= "";
+        Settings.DefaultSessionKey ??= "";
+        Settings.Model = string.IsNullOrWhiteSpace(Settings.Model) ? "hermes-agent" : Settings.Model;
+        foreach (var thread in Threads)
+        {
+            thread.Id = string.IsNullOrWhiteSpace(thread.Id) ? NewThreadId() : thread.Id;
+            thread.Title = string.IsNullOrWhiteSpace(thread.Title) ? "Без названия" : thread.Title;
+            thread.Model ??= "";
+            thread.SessionKey ??= "";
+            thread.Skills ??= new List<string>();
+            thread.Messages ??= new List<ChatMessage>();
+            foreach (var message in thread.Messages)
+            {
+                message.Id = string.IsNullOrWhiteSpace(message.Id) ? Guid.NewGuid().ToString("N") : message.Id;
+                message.Role = string.IsNullOrWhiteSpace(message.Role) ? "user" : message.Role;
+                message.Text ??= "";
+                message.Streaming = "";
+                message.Status ??= "";
+                message.Note = message.Note ?? "";
+                message.RunId = message.RunId ?? "";
+                message.Model = message.Model ?? "";
+                message.Provider = message.Provider ?? "";
+                message.RouteSource = message.RouteSource ?? "";
+                message.Attachments ??= new List<Attachment>();
+                message.Tools ??= new List<ToolStep>();
+                foreach (var file in message.Attachments) { file.Name ??= "file"; file.Path = file.Path ?? ""; }
+                foreach (var step in message.Tools) { step.Tool ??= "tool"; step.Preview = step.Preview ?? ""; step.Result = step.Result ?? ""; }
+            }
+        }
+    }
+
+    private static string NewThreadId() => "hermeschat-" + Guid.NewGuid().ToString("N")[..12];
 
     private void EnsureSeed()
     {

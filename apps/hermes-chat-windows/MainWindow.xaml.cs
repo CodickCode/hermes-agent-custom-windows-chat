@@ -112,6 +112,7 @@ public partial class MainWindow : Window
         HeaderText.Text = thread.Title;
         LoadThreadModel();
         Render();
+        UpdateStats();
     }
 
     private void OnNewThread(object sender, RoutedEventArgs e)
@@ -126,6 +127,7 @@ public partial class MainWindow : Window
         HeaderText.Text = thread.Title;
         LoadThreadModel();
         Render();
+        UpdateStats();
         Input.Focus();
     }
 
@@ -155,8 +157,9 @@ public partial class MainWindow : Window
         var panel = new StackPanel { Margin = new Thickness(0, 6, 0, 6) };
         var meta = new TextBlock
         {
-            Text = RoleName(message) + (message.Status == "running" ? " · пишет…" : "")
-                 + (message.Model.Length > 0 && message.Status == "ok" ? " · " + message.Model : ""),
+            Text = RoleName(message)
+                 + (message.Status == "running" ? " · " + StatusLine(message)
+                    : message.Status == "ok" && message.Model.Length > 0 ? " · " + message.Model : ""),
             FontSize = 11,
             Foreground = Find(message.Status switch { "running" => "Warn", "failed" => "Bad", "partial" => "Warn", "stopped" => "Dim", _ => "Dim" }),
             Margin = new Thickness(2, 0, 0, 4)
@@ -213,13 +216,15 @@ public partial class MainWindow : Window
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(2, 4, 0, 0)
             });
-        if (message.InputTokens > 0)
+        if (message.InputTokens > 0 || message.OutputTokens > 0)
             panel.Children.Add(new TextBlock
             {
-                Text = $"токены: вход {message.InputTokens} · выход {message.OutputTokens}",
+                Text = UsageLine(message),
                 FontSize = 10,
                 Foreground = Find("Dim"),
-                Margin = new Thickness(2, 4, 0, 0)
+                TextWrapping = TextWrapping.Wrap,
+                ToolTip = message.RouteSource.Length > 0 ? "маршрут: " + message.RouteSource : "",
+                Margin = new Thickness(2, 5, 0, 0)
             });
         return new Border { Child = panel, HorizontalAlignment = HorizontalAlignment.Stretch };
     }
@@ -336,6 +341,7 @@ public partial class MainWindow : Window
         if (stack.Children[0] is TextBlock meta)
             meta.Text = "Hermes · " + StatusLine(_live);
         RefreshToolRows(stack, _live);
+        UpdateStats();
         ScrollToEnd();
     }
 
@@ -464,10 +470,10 @@ public partial class MainWindow : Window
                 _live.Note = "Размышление: " + Trim(item.Text, 140);
                 break;
             case "run.completed":
+                ApplyUsage(_live, item);
                 _live.Text = item.Output;
                 _live.Status = "ok";
-                _live.InputTokens = item.InputTokens;
-                _live.OutputTokens = item.OutputTokens;
+                _live.ToolCount = _live.Tools.Count;
                 _live.Note = "";
                 break;
             case "run.failed":
@@ -487,6 +493,61 @@ public partial class MainWindow : Window
         else PatchLive();
     }
 
+    /// <summary>Переносит usage/runtime из события или из ответа опроса в сообщение.</summary>
+    private static void ApplyUsage(ChatMessage message, RunEvent item)
+    {
+        message.InputTokens = item.InputTokens;
+        message.OutputTokens = item.OutputTokens;
+        message.CacheReadTokens = item.CacheReadTokens;
+        message.CacheWriteTokens = item.CacheWriteTokens;
+        if (item.RuntimeModel.Length > 0) message.Model = item.RuntimeModel;
+        if (item.Provider.Length > 0) message.Provider = item.Provider;
+        if (item.RouteSource.Length > 0) message.RouteSource = item.RouteSource;
+        if (item.DurationMs > 0) message.DurationMs = item.DurationMs;
+    }
+
+    /// <summary>Строка учёта: сколько контекста ушло, сколько вернулось, что с кэшем и кто ответил.</summary>
+    private static string UsageLine(ChatMessage message)
+    {
+        var parts = new List<string>
+        {
+            $"контекст {message.InputTokens:N0}",
+            $"ответ {message.OutputTokens:N0}",
+            $"всего {message.InputTokens + message.OutputTokens:N0}"
+        };
+        if (message.CacheReadTokens > 0) parts.Add($"кэш чтение {message.CacheReadTokens:N0}");
+        if (message.CacheWriteTokens > 0) parts.Add($"кэш запись {message.CacheWriteTokens:N0}");
+        if (message.ToolCount > 0) parts.Add($"инструментов {message.ToolCount}");
+        if (message.DurationMs > 0) parts.Add($"{message.DurationMs / 1000.0:0.#} с");
+        if (message.Provider.Length > 0) parts.Add(message.Provider + "/" + message.Model);
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>Итог по диалогу — то, что в консоли видно как расход сессии.</summary>
+    private void UpdateStats()
+    {
+        if (_thread is null) { StatsText.Text = ""; return; }
+        var turns = _thread.Messages.Where(m => m.IsAgent && m.Status == "ok").ToList();
+        if (turns.Count == 0)
+        {
+            StatsText.Text = "Диалог пуст — расхода пока нет.";
+            return;
+        }
+        var last = turns[^1];
+        var total = turns.Sum(m => m.InputTokens + m.OutputTokens);
+        var cache = turns.Sum(m => m.CacheReadTokens);
+        var totalTools = turns.Sum(m => m.ToolCount);
+        var worst = turns.Max(m => m.InputTokens);
+        StatsText.Text =
+            $"ходов {turns.Count} · всего токенов {total:N0} · из них из кэша {cache:N0}" +
+            $" · инструментов {totalTools} · пик контекста {worst:N0} · последний: {UsageLine(last)}";
+        StatsText.ToolTip = string.Join("\n",
+            turns.Select(m => $"{Time(m.CreatedAt)}  {UsageLine(m)}"));
+    }
+
+    private static string Time(long unix) =>
+        DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString("HH:mm:ss");
+
     /// <summary>Добирает финальный статус опросом, если поток закрылся без терминального события.</summary>
     private async Task SettleAsync(ChatMessage agent, string runId, CancellationToken cancel)
     {
@@ -500,7 +561,7 @@ public partial class MainWindow : Window
             if (state.Status is "completed" or "failed" or "cancelled" or "interrupted")
             {
                 Apply(state);
-                if (state.Status == "completed") { agent.Status = "ok"; agent.Text = state.Output; }
+                if (state.Status == "completed") { ApplyUsage(agent, state); agent.Status = "ok"; agent.Text = state.Output; agent.ToolCount = agent.Tools.Count; }
                 else if (state.Status == "failed") { agent.Status = "failed"; agent.Note = Trim(state.Message, 300); }
                 else if (state.Status == "cancelled") { agent.Status = "stopped"; agent.Note = "Остановлено."; }
                 else { agent.Status = "partial"; agent.Note = "Запуск прерван на стороне шлюза."; }
@@ -532,39 +593,76 @@ public partial class MainWindow : Window
 
     // ---------- модель диалога ----------
 
+    /// <summary>Показывает модель диалога. Неизвестный идентификатор не подменяется молча:
+    /// он остаётся в поле, помеченный как свой маршрут, — иначе пользователь не видит,
+    /// что реально отправит в шлюз.</summary>
     private void LoadThreadModel()
     {
         if (_thread is null) return;
         _loadingModel = true;
         var wanted = _thread.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
-        var index = -1;
-        for (var i = 0; i < ModelBox.Items.Count; i++)
-            if (ModelBox.Items[i] is ModelChoice choice && choice.Id == wanted) { index = i; break; }
+        var index = IndexOfModel(wanted);
         if (index < 0)
         {
-            // Модель могла прийти извне (свой маршрут шлюза) — показываем её, а не молча
-            // возвращаемся к значению по умолчанию и делаем вид, что всё в порядке.
-            ModelBox.Items.Insert(0, new ModelChoice { Id = wanted, Label = wanted + " — свой маршрут" });
+            ModelBox.Items.Insert(0, new ModelChoice { Id = wanted, Label = wanted, Note = "свой маршрут" });
             index = 0;
         }
-        ModelBox.SelectedIndex = index;
+        ModelBox.SelectedItem = ModelBox.Items[index];
+        ModelBox.Text = wanted;               // редактируемое поле: показываем id, а не подпись
         _loadingModel = false;
         UpdateHeader();
     }
 
+    private int IndexOfModel(string id)
+    {
+        for (var i = 0; i < ModelBox.Items.Count; i++)
+            if (ModelBox.Items[i] is ModelChoice choice && choice.Id == id) return i;
+        return -1;
+    }
+
     private void OnModelChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loadingModel || _thread is null || ModelBox.SelectedItem is not ModelChoice choice) return;
-        _thread.Model = choice.Id;
+        if (_loadingModel || _thread is null) return;
+        if (ModelBox.SelectedItem is not ModelChoice choice || choice.Id.Length == 0) return;
+        ApplyModel(choice.Id);
+    }
+
+    /// <summary>Пользователь вписал модель руками. Пустая строка — вернуть модель по умолчанию.</summary>
+    private void OnModelTyped(object sender, RoutedEventArgs e)
+    {
+        if (_loadingModel || _thread is null) return;
+        var typed = ModelBox.Text.Trim();
+        if (typed.Length == 0) { LoadThreadModel(); return; }
+        ApplyModel(typed);
+    }
+
+    private void ApplyModel(string id)
+    {
+        var index = IndexOfModel(id);
+        if (index < 0)
+        {
+            // Неизвестный id добавляем в список, чтобы он не потерялся при переключении диалогов.
+            ModelBox.Items.Insert(0, new ModelChoice { Id = id, Label = id, Note = "свой маршрут" });
+            _loadingModel = true;
+            ModelBox.SelectedItem = ModelBox.Items[0];
+            _loadingModel = false;
+        }
+        _thread.Model = id;
         _store.Save();
         UpdateHeader();
     }
 
     private void UpdateHeader()
     {
-        var model = _thread?.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
+        var requested = _thread?.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
         var skills = _thread?.Skills.Count ?? 0;
-        HeaderText.Text = (_thread?.Title ?? "Диалог") + "  ·  " + model + (skills > 0 ? $"  ·  навыков: {skills}" : "");
+        HeaderText.Text = (_thread?.Title ?? "Диалог") + "  ·  " + requested + (skills > 0 ? $"  ·  навыков: {skills}" : "");
+        // Если провайдер переключился на резервную модель, это видно только по runtime.model —
+        // молча показывать запрошенную значило бы врать о том, кто ответил и сколько стоил ответ.
+        var served = _thread?.Messages.LastOrDefault(m => m.IsAgent && m.Model.Length > 0);
+        if (served is not null && served.Model.Length > 0 && served.Model != requested)
+            HeaderText.Text += $"  →  ответила {served.Model}";
+        HeaderText.ToolTip = HeaderText.Text;
     }
 
     // ---------- навыки ----------

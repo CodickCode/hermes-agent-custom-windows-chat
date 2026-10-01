@@ -29,6 +29,16 @@ public sealed class RunEvent
     public bool AlreadyStreamed { get; set; }
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
+    public int CacheReadTokens { get; set; }
+    public int CacheWriteTokens { get; set; }
+    public string Provider { get; set; } = "";
+    /// <summary>Модель, которая реально ответила. Совпадает с запрошенной не всегда:
+    /// провайдер умеет переключаться на резервную.</summary>
+    public string RuntimeModel { get; set; } = "";
+    public string RouteSource { get; set; } = "";
+    public double CreatedAt { get; set; }
+    public double UpdatedAt { get; set; }
+    public long DurationMs => UpdatedAt > CreatedAt ? (long)((UpdatedAt - CreatedAt) * 1000) : 0;
     public string Status { get; set; } = "";
     public string Message { get; set; } = "";
 }
@@ -72,6 +82,35 @@ public sealed class HermesClient(ChatSettings settings)
             catch (Exception) { /* нечитаемый SKILL.md не должен ломать весь список */ }
         }
         return list.OrderBy(s => s.Category).ThenBy(s => s.Name).ToList();
+    }
+
+    /// <summary>Тулсеты, которые шлюз реально отдал агенту: /v1/toolsets.</summary>
+    public async Task<List<ToolsetInfo>> ReadToolsetsAsync(CancellationToken cancel)
+    {
+        using var http = NewClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, Config.NormalizedBase + "/v1/toolsets");
+        Authorize(request);
+        using var response = await http.SendAsync(request, cancel);
+        if (!response.IsSuccessStatusCode) return new List<ToolsetInfo>();
+        var body = await response.Content.ReadAsStringAsync(cancel);
+        using var doc = JsonDocument.Parse(body);
+        var list = new List<ToolsetInfo>();
+        if (!doc.RootElement.TryGetProperty("data", out var data)) return list;
+        foreach (var item in data.EnumerateArray())
+        {
+            var tools = new List<string>();
+            if (item.TryGetProperty("tools", out var toolArray) && toolArray.ValueKind == JsonValueKind.Array)
+                foreach (var tool in toolArray.EnumerateArray())
+                    if (tool.GetString() is { Length: > 0 } name) tools.Add(name);
+            list.Add(new ToolsetInfo
+            {
+                Name = item.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                Enabled = item.TryGetProperty("enabled", out var e) && e.ValueKind == JsonValueKind.True,
+                Configured = item.TryGetProperty("configured", out var c) && c.ValueKind == JsonValueKind.True,
+                Tools = tools
+            });
+        }
+        return list;
     }
 
     public async Task<RunProbe> ProbeAsync(CancellationToken cancel)
@@ -200,3 +239,11 @@ public sealed class HermesClient(ChatSettings settings)
 }
 
 public sealed record RunProbe(bool Ok, string Note, int Status);
+
+public sealed class ToolsetInfo
+{
+    public string Name { get; set; } = "";
+    public bool Enabled { get; set; }
+    public bool Configured { get; set; }
+    public List<string> Tools { get; set; } = new();
+}
