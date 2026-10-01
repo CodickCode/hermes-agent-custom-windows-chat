@@ -1,0 +1,89 @@
+<Window x:Class="HermesChat.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HermesChat — Виндовс-чат под Hermes агента"
+        Height="820" Width="1180" MinHeight="560" MinWidth="900"
+        Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Левая колонка: диалоги и статус шлюза -->
+        <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+            <Grid Margin="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Диалоги" FontSize="12" Foreground="{StaticResource Dim}" Margin="0,4,0,8"/>
+
+                <ListBox x:Name="ThreadList" Grid.Row="1" Height="120" Background="Transparent" BorderThickness="0"
+                         Foreground="{StaticResource Fg}" DisplayMemberPath="Title"
+                         SelectionChanged="OnThreadSelected"/>
+
+                <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                    <TextBlock Text="СОСТОЯНИЕ ШЛЮЗА" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,0,0,6"/>
+                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="6" Padding="10">
+                        <StackPanel>
+                            <TextBlock x:Name="StatusText" Text="Не проверен" FontSize="13" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="StatusNote" Text="Нажми «Проверить»." FontSize="11"
+                                       Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="ProbeBtn" Grid.Row="3" Content="Проверить шлюз" Style="{StaticResource Btn}"
+                            Margin="0,10,0,0" Click="OnProbe" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="3" Margin="0,12,0,4">
+                    <Button Content="Новый диалог" Style="{StaticResource Btn}" Click="OnNewThread" HorizontalAlignment="Stretch"/>
+                    <Button Content="Настройки" Style="{StaticResource Btn}" Click="OnSettings" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Правая колонка: лента и ввод -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
+                            Click="OnStop" Visibility="Collapsed"/>
+                    <TextBlock x:Name="HeaderText" Text="Диалог" FontSize="15" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+            </Border>
+
+            <ScrollViewer x:Name="FeedScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
+                <StackPanel x:Name="Feed" Margin="0,8"/>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="Input" Grid.Row="0" AcceptsReturn="True" TextWrapping="Wrap"
+                             MinHeight="72" MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                             KeyDown="OnInputKey"/>
+                    <DockPanel Grid.Row="1" Margin="0,10,0,0">
+                        <TextBlock x:Name="Hint" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                   Text="Enter — отправить. Shift+Enter — новая строка."
+                                   FontSize="11" Foreground="{StaticResource Dim}"/>
+                        <Button x:Name="SendBtn" Content="Отправить" Style="{StaticResource PrimaryBtn}"
+                                Click="OnSend" HorizontalAlignment="Right" MinWidth="120"/>
+                    </DockPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

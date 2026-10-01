@@ -1,0 +1,92 @@
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace HermesChat;
+
+/// <summary>Диалоги и настройки на диске: %APPDATA%\HermesChat\state.json. Запись атомарная.</summary>
+public sealed class Store
+{
+    private static readonly JsonSerializerOptions Opts = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    public string Path { get; }
+    public ChatSettings Settings { get; set; } = new();
+    public List<ChatThread> Threads { get; set; } = new();
+
+    public Store()
+    {
+        var folder = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        Path = System.IO.Path.Combine(folder, "HermesChat", "state.json");
+    }
+
+    public void Load()
+    {
+        if (!File.Exists(Path)) { EnsureSeed(); return; }
+        try
+        {
+            var doc = JsonSerializer.Deserialize<Store>(File.ReadAllText(Path), Opts);
+            if (doc is null) { EnsureSeed(); return; }
+            Settings = doc.Settings ?? new ChatSettings();
+            Threads = doc.Threads ?? new List<ChatThread>();
+            foreach (var thread in Threads)
+            {
+                // Незавершённый агент после перезапуска не «продолжает молча» — он помечен и виден.
+                foreach (var message in thread.Messages.Where(m => m.Status == "running"))
+                {
+                    message.Status = "partial";
+                    message.Note = "Приложение закрыто во время ответа. Итог не получен — отправь запрос заново.";
+                }
+                thread.PendingAgentMessages = thread.Messages.Count(m => m.Status is "running");
+            }
+            if (Threads.Count == 0) EnsureSeed();
+        }
+        catch (Exception)
+        {
+            // Повреждённый state не должен ронять приложение: отводим битый файл в сторону.
+            try { File.Move(Path, Path + ".broken", true); } catch (Exception) { }
+            Settings = new ChatSettings();
+            Threads = new List<ChatThread>();
+            EnsureSeed();
+        }
+    }
+
+    private void EnsureSeed()
+    {
+        Threads.Add(new ChatThread { Title = "Новый диалог" });
+    }
+
+    public void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
+            var temp = Path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(this, Opts));
+            File.Move(temp, Path, true);
+        }
+        catch (Exception error)
+        {
+            CrashLog.Write("Не удалось сохранить состояние: " + error.Message);
+        }
+    }
+}
+
+public static class CrashLog
+{
+    private static readonly string File = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HermesChat", "error.log");
+
+    public static void Write(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File)!);
+            System.IO.File.AppendAllText(File, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
+        }
+        catch (Exception) { /* логирование не должно само падать */ }
+    }
+}

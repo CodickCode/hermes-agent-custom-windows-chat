@@ -1,0 +1,11 @@
+# Сборочные хвосты .NET внутри apps/
+**/bin/
+**/obj/
+**/dist/
+**/run*/
+*.exe
+*.dll
+*.pdb
+*.zip
+state.json
+*.broken

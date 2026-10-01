@@ -1,0 +1,64 @@
+<Application x:Class="HermesChat.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="Bg" Color="#14161A"/>
+        <SolidColorBrush x:Key="Panel" Color="#1B1E24"/>
+        <SolidColorBrush x:Key="Line" Color="#2A2F38"/>
+        <SolidColorBrush x:Key="Fg" Color="#E6E8EC"/>
+        <SolidColorBrush x:Key="Dim" Color="#8A93A0"/>
+        <SolidColorBrush x:Key="Accent" Color="#5B9CFF"/>
+        <SolidColorBrush x:Key="Good" Color="#4FB477"/>
+        <SolidColorBrush x:Key="Warn" Color="#E0A33E"/>
+        <SolidColorBrush x:Key="Bad" Color="#E0605A"/>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="Background" Value="{StaticResource Panel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#242932"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryBtn" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Background" Value="#2C5FA8"/>
+            <Setter Property="BorderBrush" Value="#3B72C4"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="Background" Value="{StaticResource Panel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
+            <Setter Property="SelectionBrush" Value="#2C5FA8"/>
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+    </Application.Resources>
+</Application>

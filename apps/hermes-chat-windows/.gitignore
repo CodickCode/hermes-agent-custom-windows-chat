@@ -1,0 +1,11 @@
+bin/
+obj/
+dist/
+run*/
+*.user
+.vs/
+*.exe
+*.dll
+*.pdb
+*.zip
+state.json
