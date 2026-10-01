@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace HermesChat;
@@ -18,12 +17,15 @@ public static class Attachments
             throw new InvalidOperationException("В буфере обмена нет изображения. Скопируй скриншот (Win+Shift+S) и попробуй снова.");
         var image = Clipboard.GetImage()
             ?? throw new InvalidOperationException("Не удалось прочитать изображение из буфера.");
-        using var ms = new MemoryStream();
+
+        byte[] bytes;
+        using (var ms = new MemoryStream())
         {
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(image));
             encoder.Save(ms);
-        var bytes = ms.ToArray();
+            bytes = ms.ToArray();
+        }
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
         var name = $"screenshot-{stamp}.png";
         var path = Write(name, bytes);
@@ -44,18 +46,16 @@ public static class Attachments
         if (info.Length > 64L * 1024 * 1024)
             throw new InvalidOperationException("Файл больше 64 МБ — агент столько не возьмёт.");
 
-        // Копируем, а не отдаём оригинал: агент получает права на запись рядом с задачей,
-        // и исходник пользователя не должен быть доступен для изменения.
+        // Копируем, а не отдаём оригинал: агент работает с файлом по этому пути и может его переписать.
         var name = Sanitize(info.Name);
-        var path = Write(name, File.ReadAllBytes(info.FullName));
         var attachment = new Attachment
         {
             Name = name,
-            Path = path,
+            Path = Write(name, File.ReadAllBytes(info.FullName)),
             Size = info.Length,
             IsImage = IsImage(name)
         };
-        if (attachment.IsImage) attachment.PreviewBase64 = TryThumbnail(path);
+        if (attachment.IsImage) attachment.PreviewBase64 = TryThumbnail(attachment.Path);
         return attachment;
     }
 
@@ -63,9 +63,11 @@ public static class Attachments
     {
         Directory.CreateDirectory(Root);
         var path = Path.Combine(Root, name);
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var extension = Path.GetExtension(name);
         var stamp = 1;
         while (File.Exists(path))
-            path = Path.Combine(Root, Path.GetFileNameWithoutExtension(name) + $"-{stamp++}" + Path.GetExtension(name));
+            path = Path.Combine(Root, $"{stem}-{stamp++}{extension}");
         File.WriteAllBytes(path, bytes);
         return path;
     }
@@ -78,11 +80,10 @@ public static class Attachments
     {
         try
         {
-            var bytes = File.ReadAllBytes(path);
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
-            image.StreamSource = new MemoryStream(bytes);
+            image.StreamSource = new MemoryStream(File.ReadAllBytes(path));
             image.DecodePixelWidth = 320;
             image.EndInit();
             var encoder = new PngBitmapEncoder();

@@ -47,6 +47,33 @@ public sealed class HermesClient(ChatSettings settings)
             request.Headers.TryAddWithoutValidation("X-Hermes-Session-Key", Config.DefaultSessionKey);
     }
 
+    /// <summary>Навыки с диска. Эндпоинт /v1/skills у шлюза падает500, поэтому читаем каталог.</summary>
+    public List<SkillInfo> ReadSkills()
+    {
+        var list = new List<SkillInfo>();
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hermes", "skills");
+        if (!Directory.Exists(root)) return list;
+        foreach (var file in Directory.EnumerateFiles(root, "SKILL.md", SearchOption.AllDirectories))
+        {
+            try
+            {
+                var head = File.ReadLines(file).Take(12).ToArray();
+                string name = "", description = "";
+                foreach (var line in head)
+                {
+                    if (line.StartsWith("name:", StringComparison.Ordinal)) name = line[5..].Trim().Trim('"');
+                    else if (line.StartsWith("description:", StringComparison.Ordinal)) description = line[12..].Trim().Trim('"');
+                    if (name.Length > 0 && description.Length > 0) break;
+                }
+                if (name.Length == 0) continue;
+                var relative = Path.GetRelativePath(root, Path.GetDirectoryName(file)!).Replace('\\', '/');
+                list.Add(new SkillInfo { Name = name, Description = description, Category = relative });
+            }
+            catch (Exception) { /* нечитаемый SKILL.md не должен ломать весь список */ }
+        }
+        return list.OrderBy(s => s.Category).ThenBy(s => s.Name).ToList();
+    }
+
     public async Task<RunProbe> ProbeAsync(CancellationToken cancel)
     {
         using var http = NewClient();
@@ -68,12 +95,13 @@ public sealed class HermesClient(ChatSettings settings)
         catch (HttpRequestException error) { return new RunProbe(false, "Шлюз недоступен: " + error.Message, 0); }
     }
 
-    public async Task<string> StartRunAsync(string threadId, string input, string sessionId, CancellationToken cancel)
+    public async Task<string> StartRunAsync(string input, string sessionId, string model, CancellationToken cancel)
     {
         using var http = NewClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, Config.NormalizedBase + "/v1/runs")
         {
-            Content = JsonContent(new { model = Config.Model, input, session_id = sessionId })
+            // model приходит из диалога: пусто — берётся модель по умолчанию из настроек
+            Content = JsonContent(new { model = model.Length > 0 ? model : Config.Model, input, session_id = sessionId })
         };
         Authorize(request);
         using var response = await http.SendAsync(request, cancel);

@@ -18,6 +18,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ChatThread> _threads = new();
     private CancellationTokenSource? _cts;
     private ChatMessage? _live;
+    private readonly List<Attachment> _pending = new();
+    private List<SkillInfo> _skills = new();
+    private bool _loadingModel;
     private bool _suppressListEvent;
 
     public MainWindow()
@@ -28,9 +31,18 @@ public partial class MainWindow : Window
         _client = new HermesClient(_store.Settings);
         // Наблюдаемая коллекция: иначе ListBox не покажет добавленный диалог —
         // ItemsSource переустановка на ту же ссылку List<T> не обновляет.
+        _loadingModel = true;
+        foreach (var choice in ModelCatalog.Defaults) ModelBox.Items.Add(choice);
+        ModelBox.SelectedIndex = 0;
+        _loadingModel = false;
+        _skills = _client.ReadSkills();
+        SkillsBtn.ToolTip = _skills.Count == 0
+            ? "Навыки не найдены в каталоге Hermes"
+            : $"{_skills.Count} навыков доступно";
         foreach (var thread in _store.Threads) _threads.Add(thread);
         ThreadList.ItemsSource = _threads;
         ThreadList.SelectedIndex = _threads.Count > 0 ? 0 : -1;
+        PreviewKeyDown += OnWindowPaste;
         Loaded += async (_, _) => await ProbeAsync();
         Closing += (_, _) => Shutdown();
     }
@@ -98,6 +110,7 @@ public partial class MainWindow : Window
         if (ThreadList.SelectedItem is not ChatThread thread) return;
         _thread = thread;
         HeaderText.Text = thread.Title;
+        LoadThreadModel();
         Render();
     }
 
@@ -111,6 +124,7 @@ public partial class MainWindow : Window
         _suppressListEvent = false;
         _thread = thread;
         HeaderText.Text = thread.Title;
+        LoadThreadModel();
         Render();
         Input.Focus();
     }
@@ -170,6 +184,26 @@ public partial class MainWindow : Window
         };
         panel.Children.Add(bubble);
 
+        if (message.Attachments.Count > 0)
+        {
+            var strip = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+            foreach (var file in message.Attachments)
+                strip.Children.Add(BuildAttachmentChip(file));
+            panel.Children.Add(strip);
+        }
+
+        if (message.Tools.Count > 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Работа агента",
+                FontSize = 11,
+                Foreground = Find("Dim"),
+                Margin = new Thickness(2, 10, 0, 3)
+            });
+            foreach (var step in message.Tools) panel.Children.Add(BuildToolRow(step));
+        }
+
         if (message.Note.Length > 0)
             panel.Children.Add(new TextBlock
             {
@@ -188,6 +222,97 @@ public partial class MainWindow : Window
                 Margin = new Thickness(2, 4, 0, 0)
             });
         return new Border { Child = panel, HorizontalAlignment = HorizontalAlignment.Stretch };
+    }
+
+    /// <summary>Живая строка состояния: видно, что агент делает, а не только «пишет».</summary>
+    private static string StatusLine(ChatMessage message)
+    {
+        if (message.Tools.LastOrDefault() is { Running: true } step)
+            return "работает: " + step.Tool;
+        if (message.Streaming.Length > 0) return "пишет…";
+        return "думает…";
+    }
+
+    private FrameworkElement BuildToolRow(ToolStep step)
+    {
+        var row = new StackPanel { Margin = new Thickness(2, 1, 0, 1), Tag = step };
+        var head = new TextBlock
+        {
+            Text = step.Running
+                ? "• " + step.Tool + " — работает…"
+                : step.Error
+                    ? "• " + step.Tool + " — ошибка" + (step.Seconds > 0 ? $" ({step.Seconds:0.#} с)" : "")
+                    : "• " + step.Tool + (step.Seconds > 0 ? $" — {step.Seconds:0.#} с" : " — готово"),
+            FontSize = 12,
+            Foreground = step.Error ? Find("Bad") : step.Running ? Find("Warn") : Find("Dim"),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        row.Children.Add(head);
+        var detail = step.Running ? step.Preview : step.Result.Length > 0 ? step.Result : step.Preview;
+        if (detail.Length > 0)
+            row.Children.Add(new TextBlock
+            {
+                Text = "    " + Trim(detail, 220),
+                FontSize = 11,
+                Foreground = Find("Dim"),
+                TextWrapping = TextWrapping.Wrap
+            });
+        return row;
+    }
+
+    /// <summary>На лету перерисовывает только строки инструментов, не трогая текст ответа.</summary>
+    private void RefreshToolRows(Panel rows, ChatMessage message)
+    {
+        if (!_store.Settings.ShowTools || message.Tools.Count == 0) return;
+        // Строки лежат в фиксированном хвосте пузыря: пересобираем их, чтобы не искать по дереву.
+        var existing = rows.Children.OfType<StackPanel>()
+            .Where(child => child.Tag is ToolStep).ToList();
+        foreach (var child in existing) rows.Children.Remove(child);
+        foreach (var step in message.Tools) rows.Children.Add(BuildToolRow(step));
+    }
+
+    private FrameworkElement BuildAttachmentChip(Attachment file)
+    {
+        var inner = new StackPanel { Orientation = Orientation.Horizontal };
+        if (file.PreviewBase64 is { Length: > 0 })
+        {
+            try
+            {
+                var image = new System.Windows.Media.Imaging.BitmapImage();
+                image.BeginInit();
+                image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                image.StreamSource = new MemoryStream(Convert.FromBase64String(file.PreviewBase64));
+                image.DecodePixelHeight = 64;
+                image.EndInit();
+                image.Freeze();
+                inner.Children.Add(new Image
+                {
+                    Source = image,
+                    Height = 44,
+                    Margin = new Thickness(0, 0, 8, 0),
+                    ToolTip = file.Path
+                });
+            }
+            catch (Exception) { /* превью не получилось — покажем только имя */ }
+        }
+        inner.Children.Add(new TextBlock
+        {
+            Text = file.Name + "  " + file.SizeText,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12,
+            Foreground = Find("Fg"),
+            ToolTip = file.Path
+        });
+        return new Border
+        {
+            Background = Find("Bg"),
+            BorderBrush = Find("Line"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 6, 8, 6),
+            Margin = new Thickness(0, 0, 8, 0),
+            Child = inner
+        };
     }
 
     private static string RoleName(ChatMessage message) => message.Role switch
@@ -209,7 +334,8 @@ public partial class MainWindow : Window
             body.Foreground = Find("Fg");
         }
         if (stack.Children[0] is TextBlock meta)
-            meta.Text = "Hermes · пишет…";
+            meta.Text = "Hermes · " + StatusLine(_live);
+        RefreshToolRows(stack, _live);
         ScrollToEnd();
     }
 
@@ -234,7 +360,7 @@ public partial class MainWindow : Window
     private async void OnSend(object sender, RoutedEventArgs e)
     {
         var text = Input.Text.Trim();
-        if (text.Length == 0 || _thread is null || _client is null) return;
+        if ((text.Length == 0 && _pending.Count == 0) || _thread is null || _client is null) return;
         if (_cts is not null) return;                       // один активный run на диалог
         if (!_store.Settings.Ready)
         {
@@ -243,14 +369,21 @@ public partial class MainWindow : Window
         }
 
         Input.Clear();
-        var user = new ChatMessage { Role = "user", Text = text };
+        var attachments = _pending.ToList();
+        _pending.Clear();
+        ShowAttachments();
+        var payload = ComposeInput(text, attachments, _thread.Skills);
+        var user = new ChatMessage { Role = "user", Text = payload, Attachments = attachments };
         var agent = new ChatMessage { Role = "agent", Status = "running" };
         _thread.Messages.Add(user);
         _thread.Messages.Add(agent);
         if (_thread.Title.StartsWith("Новый диалог", StringComparison.Ordinal))
-            _thread.Title = text.Length > 60 ? text[..60] + "…" : text;
+        {
+            var basis = text.Length > 0 ? text : attachments[0].Name;
+            _thread.Title = basis.Length > 60 ? basis[..60] + "…" : basis;
+        }
         ThreadList.Items.Refresh();
-        HeaderText.Text = _thread.Title;
+        UpdateHeader();
         _live = agent;
         Render();
         SetBusy(true);
@@ -259,7 +392,7 @@ public partial class MainWindow : Window
         _cts = cts;
         try
         {
-            var runId = await _client.StartRunAsync(_thread.Id, text, _thread.Id, cts.Token);
+            var runId = await _client.StartRunAsync(payload, _thread.Id, _thread.Model, cts.Token);
             agent.RunId = runId;
             await _client.StreamAsync(runId,
                 item => Dispatcher.BeginInvoke(new Action(() => Apply(item))),
@@ -299,11 +432,28 @@ public partial class MainWindow : Window
         switch (item.Event)
         {
             case "tool.started" when _store.Settings.ShowTools:
-                _live.Note = "Инструмент: " + item.Tool + Trim(item.Preview, 90);
+                _live.Tools.Add(new ToolStep
+                {
+                    Tool = item.Tool,
+                    Preview = Trim(item.Preview, 300),
+                    Running = true
+                });
                 break;
             case "tool.completed" when _store.Settings.ShowTools:
-                _live.Note = item.Tool + (item.Error ? " — с ошибкой" : $" — готово, {item.Duration:0.#} с") + " · " + Trim(item.Preview, 70);
+            {
+                // Ищем незакрытый вызов того же инструмента: события не гарантируют парность по имени.
+                var step = _live.Tools.LastOrDefault(s => s.Tool == item.Tool && s.Running);
+                if (step is null)
+                    _live.Tools.Add(new ToolStep { Tool = item.Tool });
+                else
+                {
+                    step.Running = false;
+                    step.Error = item.Error;
+                    step.Seconds = item.Duration;
+                    step.Result = Trim(item.Preview, 400);
+                }
                 break;
+            }
             case "message.delta":
                 _live.Streaming += item.Delta;
                 break;
@@ -379,6 +529,151 @@ public partial class MainWindow : Window
 
     private static string Trim(string value, int size) =>
         value.Length <= size ? value : value[..size] + "…";
+
+    // ---------- модель диалога ----------
+
+    private void LoadThreadModel()
+    {
+        if (_thread is null) return;
+        _loadingModel = true;
+        var wanted = _thread.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
+        var index = -1;
+        for (var i = 0; i < ModelBox.Items.Count; i++)
+            if (ModelBox.Items[i] is ModelChoice choice && choice.Id == wanted) { index = i; break; }
+        if (index < 0)
+        {
+            // Модель могла прийти извне (свой маршрут шлюза) — показываем её, а не молча
+            // возвращаемся к значению по умолчанию и делаем вид, что всё в порядке.
+            ModelBox.Items.Insert(0, new ModelChoice { Id = wanted, Label = wanted + " — свой маршрут" });
+            index = 0;
+        }
+        ModelBox.SelectedIndex = index;
+        _loadingModel = false;
+        UpdateHeader();
+    }
+
+    private void OnModelChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingModel || _thread is null || ModelBox.SelectedItem is not ModelChoice choice) return;
+        _thread.Model = choice.Id;
+        _store.Save();
+        UpdateHeader();
+    }
+
+    private void UpdateHeader()
+    {
+        var model = _thread?.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
+        var skills = _thread?.Skills.Count ?? 0;
+        HeaderText.Text = (_thread?.Title ?? "Диалог") + "  ·  " + model + (skills > 0 ? $"  ·  навыков: {skills}" : "");
+    }
+
+    // ---------- навыки ----------
+
+    private void OnSkills(object sender, RoutedEventArgs e)
+    {
+        if (_thread is null) return;
+        if (_skills.Count == 0)
+        {
+            MessageBox.Show("В каталоге Hermes не найдено ни одного SKILL.md. Проверь %LOCALAPPDATA%\\hermes\\skills.",
+                "HermesChat", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var window = new SkillsWindow(_skills, _thread.Skills) { Owner = this };
+        window.ShowDialog();
+        _store.Save();
+        UpdateHeader();
+    }
+
+    // ---------- вложения ----------
+
+    private void ShowAttachments()
+    {
+        AttachBar.ItemsSource = _pending;
+        AttachBar.Visibility = _pending.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void AddAttachment(Attachment attachment)
+    {
+        if (_pending.Count >= 10)
+        {
+            MessageBox.Show("Больше десяти вложений в одно сообщение не берём — агент запутается.",
+                "HermesChat", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _pending.Add(attachment);
+        ShowAttachments();
+    }
+
+    private void OnPasteImage(object sender, RoutedEventArgs e) => TryPaste();
+
+    private void TryPaste()
+    {
+        try { AddAttachment(Attachments.FromClipboard()); }
+        catch (Exception error) { MessageBox.Show(error.Message, "HermesChat", MessageBoxButton.OK, MessageBoxImage.Information); }
+    }
+
+    private void OnPickFile(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "Выбери файлы для агента" };
+        if (dialog.ShowDialog(this) != true) return;
+        foreach (var file in dialog.FileNames)
+        {
+            try { AddAttachment(Attachments.FromPath(file)); }
+            catch (Exception error) { CrashLog.Write("Вложение: " + error.Message); MessageBox.Show(error.Message, "HermesChat"); }
+        }
+    }
+
+    private void OnRemoveAttachment(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Attachment attachment })
+        {
+            _pending.Remove(attachment);
+            ShowAttachments();
+        }
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        DropHint.Visibility = e.Effects == DragDropEffects.Copy ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private void OnDrop(object sender, DragEventArgs e)
+    {
+        DropHint.Visibility = Visibility.Collapsed;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
+        foreach (var file in files)
+        {
+            try { AddAttachment(Attachments.FromPath(file)); }
+            catch (Exception error) { CrashLog.Write("Drag&drop: " + error.Message); MessageBox.Show(error.Message, "HermesChat"); }
+        }
+    }
+
+    /// <summary>Ctrl+V — скриншот из буфера. Не перехватываем обычную вставку текста.</summary>
+    private void OnWindowPaste(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || (Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+        if (!Clipboard.ContainsImage()) return;
+        e.Handled = true;
+        TryPaste();
+    }
+
+    /// <summary>Путь в тексте запроса: агент читает файл сам, это и есть «отправка файла».</summary>
+    private static string ComposeInput(string text, IReadOnlyList<Attachment> attachments, IReadOnlyList<string> skills)
+    {
+        var parts = new List<string>();
+        if (skills.Count > 0) parts.Add("Обязательные навыки этого диалога: " + string.Join(", ", skills) + ". Примени их.");
+        if (text.Length > 0) parts.Add(text);
+        if (attachments.Count > 0)
+        {
+            parts.Add("Прикреплённые файлы (прочитай их по путям):");
+            foreach (var file in attachments)
+                parts.Add($"- {file.Name} ({file.SizeText}) → {file.Path}");
+            parts.Add("Прежде чем отвечать, посмотри каждый файл.");
+        }
+        return string.Join("\n\n", parts);
+    }
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
