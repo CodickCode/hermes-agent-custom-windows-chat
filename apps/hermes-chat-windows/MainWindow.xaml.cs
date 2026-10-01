@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly List<Attachment> _pending = new();
     private List<SkillInfo> _skills = new();
     private bool _loadingModel;
+    private bool _loadingProfile;
     private bool _suppressListEvent;
 
     public MainWindow()
@@ -36,6 +37,8 @@ public partial class MainWindow : Window
         ModelBox.SelectedIndex = 0;
         _loadingModel = false;
         _skills = _client.ReadSkills();
+        _store.RefreshProfiles();
+        FillProfiles();
         SkillsBtn.ToolTip = _skills.Count == 0
             ? "Навыки не найдены в каталоге Hermes"
             : $"{_skills.Count} навыков доступно";
@@ -110,6 +113,7 @@ public partial class MainWindow : Window
         if (ThreadList.SelectedItem is not ChatThread thread) return;
         _thread = thread;
         HeaderText.Text = thread.Title;
+        LoadThreadProfile();
         LoadThreadModel();
         Render();
         UpdateStats();
@@ -125,6 +129,7 @@ public partial class MainWindow : Window
         _suppressListEvent = false;
         _thread = thread;
         HeaderText.Text = thread.Title;
+        LoadThreadProfile();
         LoadThreadModel();
         Render();
         UpdateStats();
@@ -520,7 +525,8 @@ public partial class MainWindow : Window
         _cts = cts;
         try
         {
-            var runId = await _client.StartRunAsync(payload, _thread.Id, _thread.Model, cts.Token);
+            var runId = await _client.StartRunAsync(payload, _thread.Id, ResolveModel(_thread),
+                BuildProfileInstructions(_thread) ?? "", ProfileSessionKey(_thread), cts.Token);
             agent.RunId = runId;
             await _client.StreamAsync(runId,
                 item => Dispatcher.BeginInvoke(new Action(() => Apply(item))),
@@ -753,8 +759,61 @@ public partial class MainWindow : Window
             index = 0;
         }
         ModelBox.SelectedItem = ModelBox.Items[index];
-        ModelBox.Text = wanted;               // редактируемое поле: показываем id, а не подпись
+        ModelBox.Text = wanted;               // в поле ввода — чистый id, он и уходит в шлюз
         _loadingModel = false;
+        UpdateHeader();
+    }
+
+    /// <summary>Профили в списке плюс явный пункт «без профиля»: универсальный агент —
+    /// не ошибка, а осознанный выбор, поэтому он должен быть видимой опцией.</summary>
+    private void FillProfiles()
+    {
+        _loadingProfile = true;
+        ProfileBox.Items.Clear();
+        ProfileBox.Items.Add(new Profile { Id = "", Name = "Универсальный (без профиля)" });
+        foreach (var profile in _store.Profiles)
+            ProfileBox.Items.Add(new Profile { Id = profile.Id, Name = profile.Name });
+        _loadingProfile = false;
+    }
+
+    private void LoadThreadProfile()
+    {
+        _loadingProfile = true;
+        var index = 0;
+        for (var i = 0; i < ProfileBox.Items.Count; i++)
+            if (ProfileBox.Items[i] is Profile choice && choice.Id == _thread?.ProfileId) { index = i; break; }
+        ProfileBox.SelectedIndex = index;
+        _loadingProfile = false;
+    }
+
+    private void OnProfileChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingProfile || _thread is null || ProfileBox.SelectedItem is not Profile choice) return;
+        _thread.ProfileId = choice.Id;
+        _thread.ProfileName = choice.Id.Length > 0
+            ? _store.Profiles.FirstOrDefault(p => p.Id == choice.Id)?.Name ?? ""
+            : "";
+        if (choice.Id.Length > 0)
+        {
+            var profile = _store.Profiles.FirstOrDefault(p => p.Id == choice.Id);
+            if (profile is not null)
+            {
+                profile.LastUsedAt = DateTimeOffset.Now.ToUnixTimeSeconds();
+                // Навыки профиля переходят в диалог: иначе они были бы мёртвым текстом в настройках.
+                foreach (var skill in profile.Skills.Where(s => !_thread.Skills.Contains(s)))
+                    _thread.Skills.Add(skill);
+            }
+        }
+        _store.Save();
+        UpdateHeader();
+    }
+
+    private void OnProfiles(object sender, RoutedEventArgs e)
+    {
+        var window = new ProfilesWindow(_store) { Owner = this };
+        window.ShowDialog();
+        FillProfiles();
+        LoadThreadProfile();
         UpdateHeader();
     }
 
@@ -800,9 +859,15 @@ public partial class MainWindow : Window
 
     private void UpdateHeader()
     {
-        var requested = _thread?.Model.Length > 0 ? _thread.Model : _store.Settings.Model;
+        var requested = _thread is null ? _store.Settings.Model : ResolveModel(_thread);
+        var profile = _thread is null ? null : ProfileOf(_thread);
+        var todo = profile?.IsBound == true ? TreeBriefs.TodoCount(profile.ProjectId) : 0;
         var skills = _thread?.Skills.Count ?? 0;
-        HeaderText.Text = (_thread?.Title ?? "Диалог") + "  ·  " + requested + (skills > 0 ? $"  ·  навыков: {skills}" : "");
+        HeaderText.Text = (_thread?.Title ?? "Диалог")
+            + (profile is not null ? "  ·  " + profile.Name : "")
+            + "  ·  " + requested
+            + (todo > 0 ? $"  ·  TODO в очереди: {todo}" : "")
+            + (skills > 0 ? $"  ·  навыков: {skills}" : "");
         // Если провайдер переключился на резервную модель, это видно только по runtime.model —
         // молча показывать запрошенную значило бы врать о том, кто ответил и сколько стоил ответ.
         var served = _thread?.Messages.LastOrDefault(m => m.IsAgent && m.Model.Length > 0);
@@ -901,6 +966,53 @@ public partial class MainWindow : Window
         if (!Clipboard.ContainsImage()) return;
         e.Handled = true;
         TryPaste();
+    }
+
+    /// <summary>
+    /// Инструкции профиля для шлюза. К специализации добавляется очередь его направления:
+    /// без неё агент-«менеджер» не знает, из чего выбирать следующий шаг.
+    /// </summary>
+    private string? BuildProfileInstructions(ChatThread thread)
+    {
+        var profile = thread.ProfileId.Length > 0 ? _store.Profiles.FirstOrDefault(p => p.Id == thread.ProfileId) : null;
+        if (profile is null) return null;
+        var parts = new List<string> { profile.Prompt };
+        if (profile.Skills.Count > 0)
+            parts.Add("Обязательные навыки этого профиля: " + string.Join(", ", profile.Skills) + ". Примени их.");
+        var todo = TreeBriefs.TodoOf(profile.ProjectId);
+        if (todo.Count > 0)
+        {
+            parts.Add("Незакрытые TODO твоего направления ("
+                + (profile.ProjectTitle.Length > 0 ? profile.ProjectTitle : "направление") + "):");
+            parts.Add(string.Join("\n", todo.Select(item => $"[{item.Id}] {item.Title}".Trim())));
+        }
+        else if (profile.ProjectId.Length > 0)
+        {
+            parts.Add("Снимок дерева не найден — своей очереди TODO у тебя нет. Скажи об этом прямо, а не выдумывай номера.");
+        }
+        return string.Join("\n\n", parts);
+    }
+
+    /// <summary>Ключ памяти профиля. У профиля он свой — иначе направления путают контекст.</summary>
+    private string ProfileSessionKey(ChatThread thread)
+    {
+        if (thread.ProfileId.Length == 0) return "";
+        var profile = _store.Profiles.FirstOrDefault(p => p.Id == thread.ProfileId);
+        return profile?.SessionKey ?? "";
+    }
+
+    private Profile? ProfileOf(ChatThread thread) =>
+        thread.ProfileId.Length > 0 ? _store.Profiles.FirstOrDefault(p => p.Id == thread.ProfileId) : null;
+
+    /// <summary>Модель диалога: профиль важнее диалога, диалог важнее настроек.</summary>
+    private string ResolveModel(ChatThread thread)
+    {
+        if (thread.ProfileId.Length > 0)
+        {
+            var profile = _store.Profiles.FirstOrDefault(p => p.Id == thread.ProfileId);
+            if (profile is not null && profile.Model.Length > 0) return profile.Model;
+        }
+        return thread.Model.Length > 0 ? thread.Model : _store.Settings.Model;
     }
 
     /// <summary>Путь в тексте запроса: агент читает файл сам, это и есть «отправка файла».</summary>

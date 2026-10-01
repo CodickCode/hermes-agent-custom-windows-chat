@@ -16,6 +16,10 @@ public sealed class Store
     public string Path { get; }
     public ChatSettings Settings { get; set; } = new();
     public List<ChatThread> Threads { get; set; } = new();
+    /// <summary>Профильные агенты направлений. Универсальный агент — тоже профиль, пустой.</summary>
+    public List<Profile> Profiles { get; set; } = new();
+    /// <summary>Снимок дерева: откуда профили берут очередь TODO.</summary>
+    public string TreeSnapshot { get; set; } = "";
 
     public Store()
     {
@@ -32,6 +36,8 @@ public sealed class Store
             if (doc is null) { EnsureSeed(); return; }
             Settings = doc.Settings ?? new ChatSettings();
             Threads = doc.Threads ?? new List<ChatThread>();
+            Profiles = doc.Profiles ?? new List<Profile>();
+            TreeSnapshot = doc.TreeSnapshot ?? "";
             foreach (var thread in Threads)
             {
                 // Незавершённый агент после перезапуска не «продолжает молча» — он помечен и виден.
@@ -43,6 +49,7 @@ public sealed class Store
                 thread.PendingAgentMessages = thread.Messages.Count(m => m.Status is "running");
             }
             Normalize();
+            if (Profiles.Count == 0) Profiles = ProfileDefaults.Seed();
             if (Threads.Count == 0) EnsureSeed();
         }
         catch (Exception)
@@ -51,6 +58,7 @@ public sealed class Store
             try { File.Move(Path, Path + ".broken", true); } catch (Exception) { }
             Settings = new ChatSettings();
             Threads = new List<ChatThread>();
+            Profiles = ProfileDefaults.Seed();
             EnsureSeed();
         }
     }
@@ -64,11 +72,33 @@ public sealed class Store
         Settings.ApiKey ??= "";
         Settings.DefaultSessionKey ??= "";
         Settings.Model = string.IsNullOrWhiteSpace(Settings.Model) ? "hermes-agent" : Settings.Model;
-        foreach (var thread in Threads)
+                foreach (var profile in Profiles)
+                {
+                    profile.Id = string.IsNullOrWhiteSpace(profile.Id) ? "profile-" + Guid.NewGuid().ToString("N")[..8] : profile.Id;
+                    profile.Name = string.IsNullOrWhiteSpace(profile.Name) ? "Без имени" : profile.Name;
+                    profile.Prompt = profile.Prompt ?? "";
+                    profile.ProjectId = profile.ProjectId ?? "";
+                    profile.ProjectTitle = profile.ProjectTitle ?? "";
+                    profile.Model = profile.Model ?? "";
+                    profile.SessionKey = profile.SessionKey ?? "";
+                    profile.Color = string.IsNullOrWhiteSpace(profile.Color) ? "#5B9CFF" : profile.Color;
+                    profile.Skills ??= new List<string>();
+                }
+                // Диалог может ссылаться на удалённый профиль — тогда он просто универсальный.
+                var known = Profiles.Select(item => item.Id).ToHashSet();
+                foreach (var thread in Threads)
+                    if (thread.ProfileId.Length > 0 && !known.Contains(thread.ProfileId))
+                    {
+                        thread.ProfileId = "";
+                        thread.ProfileName = "";
+                    }
+                foreach (var thread in Threads)
         {
             thread.Id = string.IsNullOrWhiteSpace(thread.Id) ? NewThreadId() : thread.Id;
             thread.Title = string.IsNullOrWhiteSpace(thread.Title) ? "Без названия" : thread.Title;
-            thread.Model ??= "";
+            thread.Model = thread.Model ?? "";
+            thread.ProfileId = thread.ProfileId ?? "";
+            thread.ProfileName = thread.ProfileName ?? "";
             thread.SessionKey ??= "";
             thread.Skills ??= new List<string>();
             thread.Messages ??= new List<ChatMessage>();
@@ -102,6 +132,21 @@ public sealed class Store
     private void EnsureSeed()
     {
         Threads.Add(new ChatThread { Title = "Новый диалог" });
+    }
+
+    /// <summary>Раз в запуск подтягиваем снимок дерева и подставляем профилям их очереди.</summary>
+    public void RefreshProfiles()
+    {
+        TreeBriefs.Load();
+        foreach (var profile in Profiles)
+        {
+            if (profile.ProjectId.Length == 0) continue;
+            var title = TreeBriefs.TitleOf(profile.ProjectId);
+            if (title.Length > 0) profile.ProjectTitle = title;
+            if (profile.SessionKey.Length == 0) profile.SessionKey = "agent:profile:" + profile.ProjectId + ":win";
+            if (profile.Model.Length == 0) profile.Model = Settings.Model;
+            profile.Skills.RemoveAll(string.IsNullOrWhiteSpace);
+        }
     }
 
     public void Save()

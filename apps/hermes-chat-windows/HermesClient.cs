@@ -58,11 +58,13 @@ public sealed class HermesClient(ChatSettings settings)
 
     private HttpClient NewClient() => new() { Timeout = TimeSpan.FromSeconds(120) };
 
-    private void Authorize(HttpRequestMessage request)
+    private void Authorize(HttpRequestMessage request, string sessionKey = "")
     {
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Config.ApiKey);
-        if (Config.DefaultSessionKey.Length > 0)
-            request.Headers.TryAddWithoutValidation("X-Hermes-Session-Key", Config.DefaultSessionKey);
+        // У профиля своя память: без своего session key диалоги разных направлений
+        // попадали бы в один namespace и путали контекст.
+        var key = sessionKey.Length > 0 ? sessionKey : Config.DefaultSessionKey;
+        if (key.Length > 0) request.Headers.TryAddWithoutValidation("X-Hermes-Session-Key", key);
     }
 
     /// <summary>Навыки с диска. Эндпоинт /v1/skills у шлюза падает500, поэтому читаем каталог.</summary>
@@ -142,15 +144,25 @@ public sealed class HermesClient(ChatSettings settings)
         catch (HttpRequestException error) { return new RunProbe(false, "Шлюз недоступен: " + error.Message, 0); }
     }
 
-    public async Task<string> StartRunAsync(string input, string sessionId, string model, CancellationToken cancel)
+    public async Task<string> StartRunAsync(
+        string input, string sessionId, string model, string instructions, string sessionKey, CancellationToken cancel)
     {
         using var http = NewClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, Config.NormalizedBase + "/v1/runs")
+        var payload = new Dictionary<string, object?>
         {
             // model приходит из диалога: пусто — берётся модель по умолчанию из настроек
-            Content = JsonContent(new { model = model.Length > 0 ? model : Config.Model, input, session_id = sessionId })
+            ["model"] = model.Length > 0 ? model : Config.Model,
+            ["input"] = input,
+            ["session_id"] = sessionId
         };
-        Authorize(request);
+        // instructions — «мозг» профиля. Шлюз наслаивает его поверх системного промпта,
+        // поэтому инструменты и память агента сохраняются.
+        if (instructions.Length > 0) payload["instructions"] = instructions;
+        using var request = new HttpRequestMessage(HttpMethod.Post, Config.NormalizedBase + "/v1/runs")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload, JsonOpts), Encoding.UTF8, "application/json")
+        };
+        Authorize(request, sessionKey);
         using var response = await http.SendAsync(request, cancel);
         var body = await response.Content.ReadAsStringAsync(cancel);
         if (!response.IsSuccessStatusCode) throw new HermesException(Explain(response.StatusCode, body), (int)response.StatusCode);

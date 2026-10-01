@@ -61,16 +61,24 @@
                         <Button x:Name="StopBtn" Content="Остановить" Style="{StaticResource Btn}"
                                 Click="OnStop" Visibility="Collapsed" MinWidth="110" Margin="8,0,0,0"/>
                     </StackPanel>
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,10,0">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,14,0">
+                        <Button x:Name="ProfilesBtn" Content="Профили" Style="{StaticResource Btn}"
+                                Click="OnProfiles" Margin="0,0,10,0" Padding="9,5"
+                                ToolTip="Профильные агенты по направлениям"/>
                         <TextBlock Text="Модель" VerticalAlignment="Center" FontSize="12"
                                    Foreground="{StaticResource Dim}" Margin="0,0,6,0"/>
-                        <ComboBox x:Name="ModelBox" Width="260" IsEditable="True" StaysOpenOnEdit="True"
+                        <ComboBox x:Name="ModelBox" Width="250" IsEditable="True" StaysOpenOnEdit="True"
+                                  ItemTemplate="{StaticResource ModelItemTemplate}"
                                   SelectionChanged="OnModelChanged" LostFocus="OnModelTyped"
                                   ToolTip="Модель этого диалога. Свой идентификатор можно вписать руками."/>
                         <Button x:Name="ModelSaveBtn" Content="ОК" Style="{StaticResource Btn}" Margin="6,0,0,0"
                                 Click="OnModelTyped" ToolTip="Применить вписанную модель" Padding="8,3"/>
                     </StackPanel>
-                    <TextBlock x:Name="HeaderText" Text="Диалог" FontSize="15" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <ComboBox x:Name="ProfileBox" DockPanel.Dock="Right" Width="250" Margin="0,0,8,0"
+                              SelectionChanged="OnProfileChanged"
+                              ToolTip="Агент этого диалога. Пусто — универсальный."/>
+                    <TextBlock x:Name="HeaderText" Text="Диалог" FontSize="13" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" Margin="10,0,0,0"/>
                 </DockPanel>
                                 </Border>
                                 <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,6">

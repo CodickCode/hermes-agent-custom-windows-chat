@@ -7,7 +7,10 @@ public sealed class ModelChoice
     public string Label { get; set; } = "";
     public string Note { get; set; } = "";
     public bool IsCustom => Id.Length > 0 && !ModelCatalog.Known(Id);
-    public override string ToString() => Label.Length > 0 ? Label : Id;
+    /// <summary>Список и редактируемое поле показывают Label, в котором первым идёт Id:
+    /// иначе «Claude Sonnet 4» уйдёт в шлюз как model и не сработает.</summary>
+    public string Display => Id.Length > 0 ? Id + (Label.Length > 0 ? " — " + Label : "") : Label;
+    public override string ToString() => Display;
 }
 
 public static class ModelCatalog

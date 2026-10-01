@@ -9,4 +9,12 @@
     <RootNamespace>HermesChat</RootNamespace>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+  <!-- Снимок дерева копируется рядом с exe: профили берут из него свою очередь TODO. -->
+  <ItemGroup>
+    <!-- Тесты лежат внутри, но собираются отдельным проектом: их файлы не должны
+         попадать в сборку приложения, иначе дублируются AssemblyInfo. -->
+    <Compile Remove="tests\**\*.cs"/>
+    <None Remove="tests\**"/>
+    <None Include="..\pulsepilot\tree-snapshot.json" Link="tree-snapshot.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
+  </ItemGroup>
 </Project>

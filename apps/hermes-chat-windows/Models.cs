@@ -84,6 +84,10 @@ public sealed class ChatThread : INotifyPropertyChanged
     public string Model { get; set; } = "";
     /// <summary>Навыки, прикреплённые к диалогу: агент видит их как обязательные к применению.</summary>
     public List<string> Skills { get; set; } = new();
+    /// <summary>Профиль направления. Пусто — разговор без профиля, как раньше.</summary>
+    public string ProfileId { get; set; } = "";
+    /// <summary>Модель, действующая на момент ответа: профиль важнее диалога.</summary>
+    public string ProfileName { get; set; } = "";
     public long UpdatedAt { get; set; } = DateTimeOffset.Now.ToUnixTimeSeconds();
     public long CreatedAt { get; set; } = DateTimeOffset.Now.ToUnixTimeSeconds();
     public int PendingAgentMessages { get; set; }
