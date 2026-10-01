@@ -21,12 +21,16 @@ public partial class GatewaysTab : UserControl
     }
 
     public void Load()
-    {
-        GatewayList.ItemsSource = State.Gateways;
-        if (State.Gateways.Count > 0 && GatewayList.SelectedItem is null)
-            GatewayList.SelectedIndex = 0;
-        FillProfiles();
-    }
+        {
+            // Fill the profile list BEFORE selecting: setting SelectedIndex fires
+            // OnSelect synchronously, and that reads ProfileBox. Indexing an
+            // empty ComboBox throws "ItemCollection is uninitialized", which took
+            // the whole window down at startup.
+            FillProfiles();
+            GatewayList.ItemsSource = State.Gateways;
+            if (State.Gateways.Count > 0 && GatewayList.SelectedItem is null)
+                GatewayList.SelectedIndex = 0;
+        }
 
     private void FillProfiles()
     {
@@ -45,8 +49,12 @@ public partial class GatewaysTab : UserControl
         TokenBox.Text = gateway.Token;
         NoteBox.Text = gateway.Note;
         KindBox.SelectedIndex = gateway.Kind == "hermes" ? 1 : 0;
-        ProfileBox.SelectedItem = ProfileBox.Items.OfType<Profile>()
-            .FirstOrDefault(p => p.Id == gateway.ProfileId) ?? ProfileBox.Items[0];
+        // Never index the list blindly: an empty ComboBox throws, and this
+        // handler runs during startup.
+        var profiles = ProfileBox.Items.OfType<Profile>().ToList();
+        ProfileBox.SelectedItem = profiles.FirstOrDefault(p => p.Id == gateway.ProfileId);
+        if (ProfileBox.SelectedItem is null && profiles.Count > 0)
+            ProfileBox.SelectedIndex = 0;
         Diagnose();
         ResultText.Text = gateway.Status == "не проверен"
             ? "Шлюз ещё не проверялся."
